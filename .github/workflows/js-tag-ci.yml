@@ -16,8 +16,11 @@ on:
 
 jobs:
   build-and-test-js:
-    name: Build & Validate Tag
+    name: Build, Test & Validate (JS Tag)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
 
     steps:
       - name: Checkout repository
@@ -36,6 +39,9 @@ jobs:
 
       - name: Run Tests
         run: npm test --if-present
+
+      - name: SAST Dependency Audit
+        run: npm audit --audit-level=high || true
 
       - name: Build & Minify Tag
         run: npm run build
@@ -66,3 +72,11 @@ jobs:
           name: client-tag-dist
           path: dist/
           retention-days: 7
+
+      - name: Initialize CodeQL (SAST)
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+
+      - name: Perform CodeQL Analysis (SAST)
+        uses: github/codeql-action/analyze@v3

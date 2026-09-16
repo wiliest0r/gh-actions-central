@@ -4,17 +4,25 @@ on:
   workflow_call:
     inputs:
       artifact-tag:
-        description: 'Release tag (example, v0.1.0 or sha)'
+        description: 'Release tag (e.g. v0.1.0 or git sha)'
         required: true
+        type: string
+      image-name:
+        description: 'Image name'
+        required: false
+        default: 'tracker-wasm'
         type: string
     secrets:
       REGISTRY_TOKEN:
-        required: true
+        required: false
 
 jobs:
   publish-oci:
     name: Package & Push OCI Artifact
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - name: Checkout repository
@@ -31,14 +39,24 @@ jobs:
 
       - name: Log in to GHCR
         run: |
-          echo "${{ secrets.REGISTRY_TOKEN }}" | oras login ghcr.io -u ${{ github.actor }} --password-stdin
+          TOKEN="${{ secrets.REGISTRY_TOKEN }}"
+          if [ -z "$TOKEN" ]; then
+            TOKEN="${{ secrets.GITHUB_TOKEN }}"
+          fi
+          echo "$TOKEN" | oras login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Push WASM as OCI Artifact
         run: |
           WASM_PATH=$(find ./artifacts -name "*.wasm" | head -n 1)
-          IMAGE_REF="ghcr.io/${{ github.repository_owner }}/tracker-wasm:${{ inputs.artifact-tag }}"
+          IMAGE_REF="ghcr.io/${{ github.repository_owner }}/${{ inputs.image-name }}:${{ inputs.artifact-tag }}"
+          LATEST_REF="ghcr.io/${{ github.repository_owner }}/${{ inputs.image-name }}:latest"
 
-          echo "Artifact publishing $WASM_PATH to $IMAGE_REF..."
+          echo "Publishing $WASM_PATH to $IMAGE_REF..."
           oras push "$IMAGE_REF" \
+            --artifact-type application/vnd.module.wasm.content.layer.v1+wasm \
+            "$WASM_PATH":application/vnd.module.wasm.content.layer.v1+wasm
+
+          echo "Publishing $WASM_PATH to $LATEST_REF..."
+          oras push "$LATEST_REF" \
             --artifact-type application/vnd.module.wasm.content.layer.v1+wasm \
             "$WASM_PATH":application/vnd.module.wasm.content.layer.v1+wasm

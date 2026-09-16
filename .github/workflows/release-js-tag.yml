@@ -1,0 +1,50 @@
+name: Release JS Tag
+
+on:
+  workflow_call:
+    inputs:
+      release-tag:
+        description: 'Release tag version (e.g. v0.1.0)'
+        required: true
+        type: string
+    secrets:
+      DISPATCH_TOKEN:
+        required: false
+
+jobs:
+  release-tag:
+    name: Build, Release & Dispatch
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install & Build Tag
+        run: |
+          npm install
+          npm run build
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release-tag }}
+          name: Release ${{ inputs.release-tag }}
+          files: dist/t.min.js
+          generate_release_notes: true
+
+      - name: Dispatch Release Event to Beacon
+        run: |
+          TOKEN="${{ secrets.DISPATCH_TOKEN || secrets.GITHUB_TOKEN }}"
+          curl -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $TOKEN" \
+            https://api.github.com/repos/${{ github.repository_owner }}/beacon/dispatches \
+            -d '{"event_type":"web_tag_released","client_payload":{"tag":"${{ inputs.release-tag }}"}}' || echo "Dispatch completed with notice"
