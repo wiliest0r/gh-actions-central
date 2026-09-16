@@ -20,13 +20,10 @@ jobs:
   publish-oci:
     name: Package & Push OCI Artifact
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Download compiled WASM
         uses: actions/download-artifact@v4
