@@ -1,0 +1,90 @@
+name: Rust WASM CI
+
+on:
+  workflow_call:
+    inputs:
+      rust-version:
+        description: 'Rust toolchain version'
+        required: false
+        default: 'stable'
+        type: string
+      target:
+        description: 'Target WASM architecture'
+        required: false
+        default: 'wasm32-wasip1'
+        type: string
+      max-size-mb:
+        description: 'Maximum WASM file size (in MB)'
+        required: false
+        default: 3
+        type: number
+
+jobs:
+  build-and-test-rust:
+    name: Build, Lint & Test (Rust WASM)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ inputs.rust-version }}
+          targets: ${{ inputs.target }}
+          components: rustfmt, clippy
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "rust-wasm-${{ inputs.target }}"
+
+      - name: Check Formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint (Clippy for Host)
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Lint (Clippy for WASM target)
+        run: cargo clippy --target ${{ inputs.target }} -- -D warnings
+
+      - name: Run Unit Tests (Host)
+        run: cargo test --lib --bins
+
+      - name: Build Release WASM
+        run: cargo build --release --target ${{ inputs.target }}
+
+      - name: Install binaryen (wasm-opt)
+        run: |
+          sudo apt-get update && sudo apt-get install -y binaryen
+
+      - name: Optimize WASM binary
+        run: |
+          WASM_FILE=$(find target/${{ inputs.target }}/release/ -maxdepth 1 -name "*.wasm" ! -name "*-opt.wasm" | head -n 1)
+          if [ -z "$WASM_FILE" ]; then
+            echo "Error: WASM file not found!"
+            exit 1
+          fi
+          echo "Original file: $WASM_FILE"
+          OPT_WASM="${WASM_FILE%.wasm}-opt.wasm"
+          wasm-opt -Oz "$WASM_FILE" -o "$OPT_WASM"
+
+          # Evaluate size
+          SIZE_BYTES=$(stat -c%s "$OPT_WASM")
+          SIZE_MB=$(echo "scale=2; $SIZE_BYTES / 1048576" | bc)
+          echo "Optimized binary size: ${SIZE_MB} MB"
+
+          # Validate NFR limit
+          MAX_BYTES=$((${{ inputs.max-size-mb }} * 1048576 ))
+          if [ "$SIZE_BYTES" -gt "$MAX_BYTES" ]; then
+            echo "Error: size ($SIZE_MB MB) exceeds the set limit (${{ inputs.max-size-mb }} MB)!"
+            exit 1
+          fi
+
+      - name: Upload WASM Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-release-binary
+          path: target/${{ inputs.target }}/release/*-opt.wasm
+          retention-days: 7

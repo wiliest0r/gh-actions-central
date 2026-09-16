@@ -1,0 +1,68 @@
+name: JS Tag CI
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: 'Node.js version'
+        required: false
+        default: '24'
+        type: string
+      max-gzip-size-kb:
+        description: 'Max size gzipped tag (in KB)'
+        required: false
+        default: 5
+        type: number
+
+jobs:
+  build-and-test-js:
+    name: Build & Validate Tag
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Check Linting & Code Style
+        run: npm run lint --if-present
+
+      - name: Run Tests
+        run: npm test --if-present
+
+      - name: Build & Minify Tag
+        run: npm run build
+
+      - name: Validate Bundle Size (Gzipped)
+        run: |
+          DIST_FILE=$(find dist/ -maxdepth 1 -name "*.min.js" -o -name "tag.js" | head -n 1)
+          if [ -z "$DIST_FILE" ]; then
+            echo "Error: Built JS file not found in dist/ directory!"
+            exit 1
+          fi
+
+          # Compressing gzip for checking bundle size
+          gzip -c -9 "$DIST_FILE" > "$DIST_FILE.gz"
+          GZIP_BYTES=$(stat -c%s "$DIST_FILE.gz")
+          GZIP_KB=$(echo "scale=2; $GZIP_BYTES / 1024" | bc)
+          echo "Bundle size (gzipped): ${GZIP_KB} KB"
+
+          MAX_BYTES=$(( ${{ inputs.max-gzip-size-kb }} * 1024 ))
+          if [ "$GZIP_BYTES" -gt "$MAX_BYTES" ]; then
+            echo "Error: Tag size (${GZIP_KB} KB) exceeds the limit (${{ inputs.max-gzip-size-kb }} KB)!"
+            exit 1
+          fi
+
+      - name: Upload Tag Bundle Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-tag-dist
+          path: dist/
+          retention-days: 7

@@ -1,0 +1,44 @@
+name: Release WASM OCI Artifact
+
+on:
+  workflow_call:
+    inputs:
+      artifact-tag:
+        description: 'Release tag (example, v0.1.0 or sha)'
+        required: true
+        type: string
+    secrets:
+      REGISTRY_TOKEN:
+        required: true
+
+jobs:
+  publish-oci:
+    name: Package & Push OCI Artifact
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download compiled WASM
+        uses: actions/download-artifact@v4
+        with:
+          name: wasm-release-binary
+          path: ./artifacts
+
+      - name: Setup ORAS (OCI Registry As Storage)
+        uses: oras-project/setup-oras@v1
+
+      - name: Log in to GHCR
+        run: |
+          echo "${{ secrets.REGISTRY_TOKEN }}" | oras login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Push WASM as OCI Artifact
+        run: |
+          WASM_PATH=$(find ./artifacts -name "*.wasm" | head -n 1)
+          IMAGE_REF="ghcr.io/${{ github.repository_owner }}/tracker-wasm:${{ inputs.artifact-tag }}"
+
+          echo "Artifact publishing $WASM_PATH to $IMAGE_REF..."
+          oras push "$IMAGE_REF" \
+            --artifact-type application/vnd.module.wasm.content.layer.v1+wasm \
+            "$WASM_PATH":application/vnd.module.wasm.content.layer.v1+wasm
