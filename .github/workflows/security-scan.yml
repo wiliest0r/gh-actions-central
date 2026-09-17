@@ -1,0 +1,41 @@
+name: Security & Secret Scan Gate
+
+on:
+  workflow_call:
+    inputs:
+      fail-on-vulnerabilities:
+        description: 'Whether to fail the job if critical/high CVEs are detected'
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  secret-scan:
+    name: Secret Leak Detection (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  vulnerability-scan:
+    name: Dependency & Filesystem CVE Scan (Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: ${{ inputs.fail-on-vulnerabilities && '1' || '0' }}
