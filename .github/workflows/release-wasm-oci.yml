@@ -19,7 +19,7 @@ on:
 jobs:
   publish-oci:
     name: Package & Push OCI Artifact
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
